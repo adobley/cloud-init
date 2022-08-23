@@ -167,6 +167,8 @@ class Renderer(renderer.Renderer):
         ):
             cfg.update_section(sec, "IPv6AcceptRA", iface["accept-ra"])
 
+        return dhcp
+
     # This is to accommodate extra keys present in VMware config
     def dhcp_domain(self, d, cfg):
         for item in ["dhcp4domain", "dhcp6domain"]:
@@ -208,6 +210,31 @@ class Renderer(renderer.Renderer):
             if k in dns and dns[k]:
                 cfg.update_section(sec, v, " ".join(dns[k]))
 
+    def parse_dhcp_overrides(self, cfg, device, dhcp):
+        dhcp_config_maps = {
+            "UseDNS": "use-dns",
+            "UseNTP": "use-ntp",
+            "SendHostname": "send-hostname",
+            "UseHostname": "use-hostname",
+            "Hostname": "hostname",
+            "RouteMetric": "route-metric",
+            "UseDomains": "use-domains",
+            "UseMTU": "use-mtu",
+            "UseRoutes": "use-routes",
+        }
+
+        if "dhcp4-overrides" in device and dhcp in ["yes", "ipv4"]:
+            dhcp4_overrides = device["dhcp4-overrides"]
+            for k, v in dhcp_config_maps.items():
+                if v in dhcp4_overrides:
+                    cfg.update_section("DHCPv4", k, dhcp4_overrides[v])
+
+        if "dhcp6-overrides" in device and dhcp in ["yes", "ipv6"]:
+            dhcp6_overrides = device["dhcp6-overrides"]
+            for k, v in dhcp_config_maps.items():
+                if v in dhcp6_overrides:
+                    cfg.update_section("DHCPv6", k, dhcp6_overrides[v])
+
     def create_network_file(self, link, conf, nwk_dir):
         net_fn_owner = "systemd-network"
 
@@ -235,7 +262,7 @@ class Renderer(renderer.Renderer):
 
             link = self.generate_match_section(iface, cfg)
             self.generate_link_section(iface, cfg)
-            self.parse_subnets(iface, cfg)
+            dhcp = self.parse_subnets(iface, cfg)
             self.parse_dns(iface, cfg, ns)
 
             for route in ns.iter_routes():
@@ -258,6 +285,7 @@ class Renderer(renderer.Renderer):
                             name = dev_name
                             break
 
+                self.parse_dhcp_overrides(cfg, ns.config["ethernets"][name], dhcp)
                 self.dhcp_domain(ns.config["ethernets"][name], cfg)
 
             ret_dict.update({link: cfg.get_final_conf()})
